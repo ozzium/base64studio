@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ozzium Base64 Studio</title>
+    <style>
+        :root { --primary: #3b82f6; --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --danger: #ef4444; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; height: 100vh; display: flex; flex-direction: column; box-sizing: border-box; }
+        
+        /* Layout */
+        .workspace { display: flex; gap: 20px; flex: 1; height: 100%; overflow: hidden; }
+        .sidebar { width: 340px; background: var(--panel); padding: 20px; border-radius: 12px; display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; border: 1px solid #334155; }
+        .main-area { flex: 1; background: #000; border-radius: 12px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; border: 1px solid #334155; }
+        
+        /* UI Elements */
+        h2 { margin: 0 0 15px 0; font-size: 1.2rem; border-bottom: 1px solid #334155; padding-bottom: 10px; color: #fff; }
+        label { display: block; margin: 12px 0 5px; font-size: 0.85rem; color: #94a3b8; font-weight: 600; }
+        
+        input[type="number"], input[type="text"], textarea, select { width: 100%; background: #0f172a; border: 1px solid #334155; color: white; padding: 8px; border-radius: 6px; box-sizing: border-box; }
+        input[type="number"]:focus, textarea:focus, select:focus { border-color: var(--primary); outline: none; }
+        
+        textarea { resize: vertical; min-height: 80px; font-family: monospace; font-size: 0.8rem; }
+        
+        /* Checkbox styling */
+        .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; margin-top: 5px; }
+        input[type="checkbox"] { width: auto; margin: 0; cursor: pointer; }
+        .checkbox-label { margin: 0; font-weight: 400; font-size: 0.8rem; cursor: pointer; }
+
+        /* Buttons */
+        button { background: var(--primary); color: white; border: none; padding: 10px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 5px; width: 100%; transition: all 0.2s; font-size: 0.9rem;}
+        button:hover { filter: brightness(110%); }
+        button:active { transform: translateY(1px); }
+        
+        button.secondary { background: #334155; }
+        button.secondary:hover { background: #475569; }
+        
+        button.outline { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 4px 8px; font-size: 0.8rem; margin-top: 0; width: auto;}
+        button.outline:hover { color: white; border-color: white; }
+
+        /* Inputs grouping */
+        .input-group { display: flex; gap: 6px; }
+        .input-group select { width: 25%; }
+        .input-group input { width: 45%; }
+        .input-group button { width: 30%; margin-top: 0; }
+
+        /* Canvas & Grid */
+        canvas { max-width: 100%; max-height: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.5); background-image: conic-gradient(#334155 90deg, #1e293b 90deg); background-size: 20px 20px; }
+        .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        
+        .header-row { display: flex; justify-content: space-between; align-items: baseline; }
+
+        /* Tabs */
+        .tab-container { display:flex; gap:5px; margin-bottom: 15px; background: #0f172a; padding: 4px; border-radius: 8px;}
+        .tab-btn { background: transparent; color: #94a3b8; margin: 0; border-radius: 6px; }
+        .tab-btn.active { background: var(--primary); color: white; }
+
+        /* Helpers */
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="workspace">
+    <div class="sidebar">
+        
+        <div class="tab-container">
+            <button onclick="setMode('encode')" id="btnEncode" class="tab-btn active">Image → Base64</button>
+            <button onclick="setMode('decode')" id="btnDecode" class="tab-btn">Base64 → Image</button>
+        </div>
+
+        <div id="encodeControls">
+            <div class="header-row">
+                <label>1. Select Image</label>
+                <button class="outline" onclick="pushHistory(); clearCanvas();">Reset Canvas</button>
+            </div>
+            <input type="file" id="fileInput" accept="image/*">
+            
+            <div class="header-row">
+                <label>Edit Image</label>
+                <button class="outline" onclick="undo()" title="Undo last change">↩ Undo</button>
+            </div>
+            <div class="controls-grid">
+                <button class="secondary" onclick="applyEffect('grayscale')">B&W</button>
+                <button class="secondary" onclick="applyEffect('invert')">Invert</button>
+                <button class="secondary" onclick="applyEffect('blur')">Blur</button>
+                <button class="secondary" onclick="applyEffect('sharpen')">Sharpen</button>
+            </div>
+
+            <label>Resize (px)</label>
+            <div class="checkbox-row">
+                <input type="checkbox" id="checkConstrain" checked>
+                <label for="checkConstrain" class="checkbox-label">Constrain Proportions</label>
+            </div>
+            <div class="controls-grid">
+                <input type="number" id="rsWidth" placeholder="W">
+                <input type="number" id="rsHeight" placeholder="H">
+            </div>
+            <button class="secondary" onclick="resizeImage()">Apply Resize</button>
+
+            <label>2. Generate Output</label>
+            <button onclick="processToOutput()">Update Base64 String</button>
+        </div>
+
+        <div id="decodeControls" class="hidden">
+            <div class="header-row">
+                <label>Input Base64</label>
+                <button class="outline" onclick="document.getElementById('b64Input').value=''">Clear</button>
+            </div>
+            <textarea id="b64Input" placeholder="Paste string here..."></textarea>
+            <button onclick="decodeInput()">Render Image</button>
+        </div>
+
+        <div style="margin-top: auto; border-top: 1px solid #334155; padding-top: 15px;">
+            <div class="header-row">
+                <label style="margin-top:0;">Base64 Result</label>
+                <button class="outline" onclick="document.getElementById('finalOutput').value=''">Clear</button>
+            </div>
+            <textarea id="finalOutput" readonly placeholder="Result will appear here..."></textarea>
+            
+            <button class="secondary" onclick="copyOutput()" style="margin-bottom:8px;">Copy Text</button>
+            
+            <div class="input-group">
+                <select id="saveFormat">
+                    <option value="png">PNG</option>
+                    <option value="jpg">JPG</option>
+                    <option value="ico">ICO</option>
+                </select>
+                <input type="text" id="saveName" placeholder="filename" value="ozzium_image">
+                <button class="secondary" onclick="downloadImagePrompt()">Save Image</button>
+            </div>
+            
+            <p id="status" style="font-size:0.8rem; color:#4ade80; min-height:1.2em; text-align:center; margin-bottom:0;"></p>
+        </div>
+    </div>
+
+    <div class="main-area">
+        <canvas id="editor"></canvas>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('editor');
+    const ctx = canvas.getContext('2d');
+    let currentMode = 'encode';
+    let historyStack = [];
+    let currentAspectRatio = 0; 
+
+    // --- Core Functions ---
+
+    function pushHistory() {
+        if (canvas.width === 0 || canvas.height === 0) return;
+        if (historyStack.length > 10) historyStack.shift(); 
+        historyStack.push(canvas.toDataURL());
+    }
+
+    function undo() {
+        if (historyStack.length === 0) {
+            setStatus("Nothing to undo", "orange");
+            return;
+        }
+        const lastState = historyStack.pop();
+        const img = new Image();
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+            updateDims();
+            processToOutput();
+            setStatus("Undone");
+        };
+        img.src = lastState;
+    }
+
+    // Load from File
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        if(!e.target.files[0]) return;
+        pushHistory(); 
+        const img = new Image();
+        img.onload = () => {
+            loadImageToCanvas(img);
+        };
+        img.src = URL.createObjectURL(e.target.files[0]);
+        this.value = ''; 
+    });
+
+    // Helper to centralize loading logic
+    function loadImageToCanvas(img) {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.clearRect(0,0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        
+        currentAspectRatio = img.width / img.height;
+        updateDims();
+        processToOutput();
+    }
+
+    // Load from Base64
+    function decodeInput() {
+        let val = document.getElementById('b64Input').value;
+        val = val.replace(/\s/g, ''); // Sanitize
+
+        if(!val) {
+            setStatus("Input is empty!", "red");
+            return;
+        }
+
+        if (!val.startsWith('data:image')) {
+            val = 'data:image/png;base64,' + val;
+        }
+
+        pushHistory(); 
+
+        const img = new Image();
+        img.onload = () => {
+            loadImageToCanvas(img);
+            setStatus("Image Rendered");
+            document.getElementById('finalOutput').value = val;
+        };
+        img.onerror = () => {
+            setStatus("Error: Invalid Base64 String", "red");
+            historyStack.pop(); 
+        };
+        img.src = val;
+    }
+
+    // Generate Output Base64
+    function processToOutput() {
+        if (canvas.width === 0) return;
+        const data = canvas.toDataURL('image/png');
+        document.getElementById('finalOutput').value = data;
+        setStatus(`Generated (${Math.round(data.length/1024)} KB)`);
+    }
+
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = 300; 
+        canvas.height = 150;
+        document.getElementById('finalOutput').value = "";
+        
+        // Reset Inputs
+        document.getElementById('rsWidth').value = "";
+        document.getElementById('rsHeight').value = "";
+        currentAspectRatio = 0;
+        
+        // Draw placeholder text again
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(0,0,300,150);
+        ctx.fillStyle = "#475569";
+        ctx.font = "14px sans-serif";
+        ctx.fillText("Canvas Reset", 105, 80);
+        
+        setStatus("Canvas Cleared");
+    }
+
+    // --- Resize Logic (Constrain Proportions) ---
+
+    const wInput = document.getElementById('rsWidth');
+    const hInput = document.getElementById('rsHeight');
+    const checkConstrain = document.getElementById('checkConstrain');
+
+    wInput.addEventListener('input', function() {
+        if(checkConstrain.checked && currentAspectRatio > 0) {
+            const val = parseInt(this.value);
+            if(val) hInput.value = Math.round(val / currentAspectRatio);
+        }
+    });
+
+    hInput.addEventListener('input', function() {
+        if(checkConstrain.checked && currentAspectRatio > 0) {
+            const val = parseInt(this.value);
+            if(val) wInput.value = Math.round(val * currentAspectRatio);
+        }
+    });
+
+    function resizeImage() {
+        const w = parseInt(wInput.value);
+        const h = parseInt(hInput.value);
+        if(!w || !h) return;
+
+        pushHistory();
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        tempCanvas.getContext('2d').drawImage(canvas, 0, 0);
+
+        canvas.width = w;
+        canvas.height = h;
+        ctx.drawImage(tempCanvas, 0, 0, w, h);
+        
+        currentAspectRatio = w / h; // Update ratio for new size
+        processToOutput();
+    }
+
+    // --- Image Effects ---
+
+    function applyEffect(type) {
+        pushHistory();
+
+        const w = canvas.width, h = canvas.height;
+        if(w === 0) return;
+        
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const data = imgData.data;
+
+        if (type === 'grayscale') {
+            for (let i = 0; i < data.length; i += 4) {
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                data[i] = avg; data[i + 1] = avg; data[i + 2] = avg;
+            }
+            ctx.putImageData(imgData, 0, 0);
+        } 
+        else if (type === 'invert') {
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = 255 - data[i];     
+                data[i+1] = 255 - data[i+1]; 
+                data[i+2] = 255 - data[i+2]; 
+            }
+            ctx.putImageData(imgData, 0, 0);
+        }
+        else if (type === 'blur') {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = w; tempCanvas.height = h;
+            const tCtx = tempCanvas.getContext('2d');
+            tCtx.drawImage(canvas, 0, 0);
+            
+            ctx.filter = 'blur(4px)';
+            ctx.drawImage(tempCanvas, 0, 0);
+            ctx.filter = 'none';
+        }
+        else if (type === 'sharpen') {
+            const weights = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+            convolute(weights);
+        }
+        processToOutput();
+    }
+
+    function convolute(weights) {
+        const side = Math.round(Math.sqrt(weights.length));
+        const half = (side * 0.5) | 0;
+        const w = canvas.width, h = canvas.height;
+        const src = ctx.getImageData(0,0,w,h).data;
+        const output = ctx.createImageData(w, h);
+        const dst = output.data;
+
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                let r=0, g=0, b=0;
+                const dstOff = (y*w+x)*4;
+                for (let cy=0; cy<side; cy++) {
+                    for (let cx=0; cx<side; cx++) {
+                        const scy = y + cy - half;
+                        const scx = x + cx - half;
+                        if (scy >= 0 && scy < h && scx >= 0 && scx < w) {
+                            const srcOff = (scy*w+scx)*4;
+                            const wt = weights[cy*side+cx];
+                            r += src[srcOff] * wt;
+                            g += src[srcOff+1] * wt;
+                            b += src[srcOff+2] * wt;
+                        }
+                    }
+                }
+                dst[dstOff] = r; dst[dstOff+1] = g; dst[dstOff+2] = b; dst[dstOff+3] = src[dstOff+3];
+            }
+        }
+        ctx.putImageData(output, 0, 0);
+    }
+
+    // --- Utilities ---
+
+    function updateDims() {
+        wInput.value = canvas.width;
+        hInput.value = canvas.height;
+    }
+
+    function setMode(mode) {
+        currentMode = mode;
+        document.getElementById('btnEncode').className = mode === 'encode' ? 'tab-btn active' : 'tab-btn';
+        document.getElementById('btnDecode').className = mode === 'decode' ? 'tab-btn active' : 'tab-btn';
+        
+        const encDiv = document.getElementById('encodeControls');
+        const decDiv = document.getElementById('decodeControls');
+        
+        if (mode === 'encode') {
+            encDiv.classList.remove('hidden');
+            decDiv.classList.add('hidden');
+        } else {
+            encDiv.classList.add('hidden');
+            decDiv.classList.remove('hidden');
+        }
+    }
+
+    function copyOutput() {
+        const txt = document.getElementById('finalOutput');
+        txt.select();
+        document.execCommand('copy');
+        setStatus("Copied to clipboard!");
+    }
+
+    // FIXED: Download Logic
+    function downloadImagePrompt() {
+        if (canvas.width === 0 || (canvas.width === 300 && canvas.height === 150)) {
+            if (document.getElementById('finalOutput').value === '') {
+                setStatus('No image to save!', 'red');
+                return;
+            }
+        }
+
+        // 1) Filename (no prompt so it works inside the EXE too)
+        let filename = (document.getElementById('saveName')?.value || '').trim();
+        if (!filename) filename = 'ozzium_image';
+
+        try {
+            const format = document.getElementById('saveFormat').value;
+            let dataUrl = '';
+
+            if (format === 'jpg') {
+                // JPG doesn't support alpha; paint white background first
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = canvas.width;
+                tempCanvas.height = canvas.height;
+                const tCtx = tempCanvas.getContext('2d');
+                tCtx.fillStyle = '#FFFFFF';
+                tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                tCtx.drawImage(canvas, 0, 0);
+                dataUrl = tempCanvas.toDataURL('image/jpeg', 0.92);
+            } else {
+                // PNG (and ICO source) as lossless PNG
+                dataUrl = canvas.toDataURL('image/png');
+            }
+
+            // 2) If running inside Electron, use IPC save (fixes the "Save Image" button in the EXE)
+            if (window.ozziumSave && typeof window.ozziumSave.saveImage === 'function') {
+                window.ozziumSave.saveImage({
+                    dataUrl,
+                    format,
+                    defaultName: `${filename}.${format}`
+                }).then((res) => {
+                    if (res && res.ok) setStatus('Saved!');
+                    else if (res && res.cancelled) setStatus('Save cancelled', 'orange');
+                    else setStatus('Save failed', 'red');
+                }).catch((err) => {
+                    console.error(err);
+                    setStatus('Save failed', 'red');
+                });
+                return;
+            }
+
+            // 3) Browser fallback: download attribute
+            const link = document.createElement('a');
+            link.download = `${filename}.${format}`;
+            link.href = dataUrl;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setStatus('Saved to Downloads folder!');
+
+        } catch (e) {
+            alert('Error saving image: ' + e.message + "\n\n" + 'Try a different browser or check permissions.');
+            setStatus('Save Failed', 'red');
+        }
+    }
+
+function setStatus(msg, color = "#4ade80") {
+        const s = document.getElementById('status');
+        s.style.color = color;
+        s.innerText = msg;
+        setTimeout(() => s.innerText = "", 3000);
+    }
+    
+    // Init defaults
+    clearCanvas();
+
+</script>
+</body>
+</html>
